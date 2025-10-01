@@ -10,10 +10,6 @@ import scms_be.general_service.model.entity.Product;
 @Repository
 public interface ProductRepository extends JpaRepository<Product, Long> {
   
-  List<Product> findByItemId(Long itemId);
-  
-  boolean existsBySerialNumber(String serialNumber);
-  
-  boolean existsByQrCode(String qrCode);
+  List<Product> findByItemItemId(Long itemId);
   
 }

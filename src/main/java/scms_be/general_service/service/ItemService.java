@@ -2,80 +2,70 @@ package scms_be.general_service.service;
 
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import scms_be.general_service.exception.RpcException;
 import scms_be.general_service.model.dto.ItemDto;
 import scms_be.general_service.model.entity.Item;
 import scms_be.general_service.model.request.ItemRequest;
+import scms_be.general_service.repository.ItemRepository;
 
 @Service
 public class ItemService {
-    
-    // Simulate database với in-memory storage
-    private final Map<Long, Item> itemStorage = new ConcurrentHashMap<>();
-    private final AtomicLong itemIdGenerator = new AtomicLong(1);
+    @Autowired
+    private ItemRepository itemRepository;
 
     public ItemDto createItem(ItemRequest request) {
-
         System.out.println("Received createItem request: " + request);
         Long companyId = request.getCompanyId();
         ItemRequest.ItemData itemData = request.getItem();
 
         String itemCode = itemData.getItemCode();
-        if (itemCode != null && isItemCodeExists(itemCode)) {
+        if (itemCode != null && itemRepository.existsByItemCode(itemCode)) {
             throw new RpcException(400, "Mã hàng hóa đã được sử dụng!");
         }
 
         Item item = new Item();
-        item.setItemId(itemIdGenerator.getAndIncrement());
         item.setCompanyId(companyId);
         item.setItemCode(itemCode != null ? itemCode : generateItemCode(companyId));
         item.setItemName(itemData.getItemName());
         item.setItemType(itemData.getItemType());
-        
+
         Boolean isSellable = itemData.getIsSellable();
         if (isSellable != null) {
             item.setIsSellable(isSellable);
         }
-        
+
         item.setUom(itemData.getUom());
         item.setTechnicalSpecifications(itemData.getTechnicalSpecifications());
-        
+
         Double importPrice = itemData.getImportPrice();
         if (importPrice != null) {
             item.setImportPrice(importPrice);
         }
-        
+
         Double exportPrice = itemData.getExportPrice();
         if (exportPrice != null) {
             item.setExportPrice(exportPrice);
         }
-        
-        item.setDescription(itemData.getDescription());
 
-        itemStorage.put(item.getItemId(), item);
+        item.setDescription(itemData.getDescription());
+        item = itemRepository.save(item);
         return convertToDto(item);
     }
 
     public List<ItemDto> getAllItemsInCompany(ItemRequest request) {
         Long companyId = request.getCompanyId();
-        
-        List<Item> items = itemStorage.values().stream()
-            .filter(item -> item.getCompanyId().equals(companyId))
-            .collect(Collectors.toList());
-            
+        List<Item> items = itemRepository.findByCompanyId(companyId);
         return items.stream().map(this::convertToDto).collect(Collectors.toList());
     }
 
     public ItemDto getItemById(ItemRequest request) {
         Long itemId = request.getItemId();
-        
-        Item item = itemStorage.get(itemId);
+        Item item = itemRepository.findById(itemId).orElse(null);
         if (item == null) {
             throw new RpcException(404, "Không tìm thấy hàng hóa!");
         }
@@ -85,20 +75,17 @@ public class ItemService {
     public ItemDto updateItem(ItemRequest request) {
         Long itemId = request.getItemId();
         ItemRequest.ItemData itemData = request.getItem();
-        
-        Item existingItem = itemStorage.get(itemId);
+        Item existingItem = itemRepository.findById(itemId).orElse(null);
         if (existingItem == null) {
             throw new RpcException(404, "Không tìm thấy hàng hóa!");
         }
-
         String newItemCode = itemData.getItemCode();
         if (newItemCode != null && !existingItem.getItemCode().equals(newItemCode)) {
-            if (isItemCodeExists(newItemCode)) {
+            if (itemRepository.existsByItemCode(newItemCode)) {
                 throw new RpcException(400, "Mã hàng hóa đã được sử dụng!");
             }
             existingItem.setItemCode(newItemCode);
         }
-
         // Update các field khác
         if (itemData.getItemName() != null) {
             existingItem.setItemName(itemData.getItemName());
@@ -124,34 +111,26 @@ public class ItemService {
         if (itemData.getDescription() != null) {
             existingItem.setDescription(itemData.getDescription());
         }
-
-        itemStorage.put(itemId, existingItem);
+        existingItem = itemRepository.save(existingItem);
         return convertToDto(existingItem);
     }
 
     public Map<String, Object> deleteItem(ItemRequest request) {
         Long itemId = request.getItemId();
-        
-        Item item = itemStorage.remove(itemId);
-        boolean success = item != null;
-        
+        boolean exists = itemRepository.existsById(itemId);
+        if (exists) {
+            itemRepository.deleteById(itemId);
+        }
         return Map.of(
-            "success", success,
-            "message", success ? "Item đã được xóa thành công!" : "Không tìm thấy hàng hóa!"
+            "success", exists,
+            "message", exists ? "Item đã được xóa thành công!" : "Không tìm thấy hàng hóa!"
         );
     }
 
     private String generateItemCode(Long companyId) {
         String prefix = "I" + String.format("%04d", companyId);
-        long count = itemStorage.values().stream()
-            .filter(item -> item.getItemCode().startsWith(prefix))
-            .count();
+        int count = itemRepository.countByItemCodeStartingWith(prefix);
         return prefix + String.format("%05d", count + 1);
-    }
-
-    private boolean isItemCodeExists(String itemCode) {
-        return itemStorage.values().stream()
-            .anyMatch(item -> item.getItemCode().equals(itemCode));
     }
 
     private ItemDto convertToDto(Item item) {

@@ -10,7 +10,6 @@ public class ManufactureLineRequest {
     
     @Data
     public static class LineData {
-        private String lineCode;
         private String lineName;
         private Double capacity;
         private String description;

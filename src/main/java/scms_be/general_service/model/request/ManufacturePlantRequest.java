@@ -10,7 +10,6 @@ public class ManufacturePlantRequest {
     
     @Data
     public static class PlantData {
-        private String plantCode;
         private String plantName;
         private String description;
     }
